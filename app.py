@@ -82,19 +82,25 @@ async def upload_file(
             except json.JSONDecodeError:
                 attachments = {}
 
+        attachment_payload = {
+            "filename": target_name,
+            "original_filename": original_name,
+            "file_path": str(target_path),
+            "file_url": f"/files/{target_name}",
+        }
+
         if attachment_slot is not None:
-            attachments[str(attachment_slot)] = {
-                "filename": target_name,
-                "original_filename": original_name,
-                "file_path": str(target_path),
-                "file_url": f"/files/{target_name}",
-            }
+            attachments[str(attachment_slot)] = attachment_payload
 
         updates = {
-            "filename": target_name,
-            "file_path": str(target_path),
             "attachments_json": json.dumps(attachments, ensure_ascii=False),
         }
+
+        # Keep the document's primary file aligned with attachment 1.
+        # Other attachment slots should not replace the main preview or OCR target.
+        if attachment_slot in {None, 1}:
+            updates["filename"] = target_name
+            updates["file_path"] = str(target_path)
 
         if attachment_slot == 1:
             extracted = extract_text_from_file(str(target_path))

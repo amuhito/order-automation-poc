@@ -443,6 +443,30 @@ body {
   gap: 12px;
 }
 
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.detail-summary div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(9, 30, 66, 0.04);
+}
+
+.detail-summary span,
+.detail-summary strong {
+  display: block;
+}
+
+.detail-summary span {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .detail-grid label {
   display: grid;
   gap: 6px;

@@ -126,6 +126,7 @@ async function openDetail(documentId) {
   const response = await fetch(`/documents/${documentId}`);
   const doc = await response.json();
   const attachments = doc.attachments || {};
+  const primaryPreviewUrl = attachments["1"]?.file_url || doc.file_url || null;
 
   detailDrawerEl.classList.remove("hidden");
 
@@ -149,6 +150,12 @@ async function openDetail(documentId) {
 
     <div class="detail-block">
       <h4>\u30ab\u30fc\u30c9\u60c5\u5831</h4>
+      <div class="detail-summary">
+        <div><span>\u6a5f\u68b0\u756a\u53f7</span><strong>${escapeHtml(doc.machine_number || "\u672a\u8a2d\u5b9a")}</strong></div>
+        <div><span>\u578b\u5f0f</span><strong>${escapeHtml(doc.model || "\u672a\u8a2d\u5b9a")}</strong></div>
+        <div><span>\u5ba2\u5148\u540d</span><strong>${escapeHtml(doc.customer_name || "\u672a\u8a2d\u5b9a")}</strong></div>
+        <div><span>\u5e0c\u671b\u6240\u8981\u65e5\u6570</span><strong>${escapeHtml(doc.requested_lead_days || "\u672a\u8a2d\u5b9a")}</strong></div>
+      </div>
       <div class="detail-grid">
         <label>\u53d7\u6ce8\u756a\u53f7<input id="orderNumberInput" type="text" value="${escapeAttribute(doc.order_number || "")}" /></label>
         <label>\u6a5f\u68b0\u756a\u53f7<input id="machineNumberInput" type="text" value="${escapeAttribute(doc.machine_number || "")}" /></label>
@@ -163,12 +170,12 @@ async function openDetail(documentId) {
 
     <div class="detail-block">
       <h4>\u6dfb\u4ed8\u30d5\u30a1\u30a4\u30eb</h4>
-      ${renderAttachmentSlot(1, "\u6ce8\u6587\u60c5\u5831", attachments["1"])}
-      ${renderAttachmentSlot(2, "\u8a2d\u8a08\u30ea\u30b9\u30c8", attachments["2"])}
-      ${renderAttachmentSlot(3, "\u6dfb\u4ed8\u66f8\u985e", attachments["3"])}
-      ${renderAttachmentSlot(4, "\u7dca\u6025\u4f5c\u696d\u6307\u793a\u66f8", attachments["4"])}
-      ${renderAttachmentSlot(5, "\u56f3\u9762", attachments["5"])}
-      ${renderAttachmentSlot(6, "AP\u304b\u3089\u306e\u8cc7\u6599", attachments["6"])}
+      ${renderAttachmentSlot(1, "\u6ce8\u6587\u60c5\u5831", attachments["1"], primaryPreviewUrl)}
+      ${renderAttachmentSlot(2, "\u8a2d\u8a08\u30ea\u30b9\u30c8", attachments["2"], primaryPreviewUrl)}
+      ${renderAttachmentSlot(3, "\u6dfb\u4ed8\u66f8\u985e", attachments["3"], primaryPreviewUrl)}
+      ${renderAttachmentSlot(4, "\u7dca\u6025\u4f5c\u696d\u6307\u793a\u66f8", attachments["4"], primaryPreviewUrl)}
+      ${renderAttachmentSlot(5, "\u56f3\u9762", attachments["5"], primaryPreviewUrl)}
+      ${renderAttachmentSlot(6, "AP\u304b\u3089\u306e\u8cc7\u6599", attachments["6"], primaryPreviewUrl)}
       <p id="uploadStatusText" class="inline-note"></p>
     </div>
 
@@ -179,7 +186,8 @@ async function openDetail(documentId) {
 
     <div class="detail-block">
       <h4>\u30d7\u30ec\u30d3\u30e5\u30fc</h4>
-      ${renderPreview(doc.file_url)}
+      <p id="previewLabel" class="inline-note">${escapeHtml(getPreviewLabel(primaryPreviewUrl, attachments))}</p>
+      <div id="previewPanel">${renderPreview(primaryPreviewUrl)}</div>
     </div>
   `;
 
@@ -241,9 +249,27 @@ async function openDetail(documentId) {
       await openDetail(doc.id);
     });
   });
+
+  document.querySelectorAll("[data-preview-url]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const previewUrl = button.dataset.previewUrl || "";
+      const previewPanelEl = document.getElementById("previewPanel");
+      const previewLabelEl = document.getElementById("previewLabel");
+      previewPanelEl.innerHTML = renderPreview(previewUrl || primaryPreviewUrl);
+      previewLabelEl.textContent = button.dataset.previewLabel || getPreviewLabel(primaryPreviewUrl, attachments);
+    });
+  });
 }
 
-function renderAttachmentSlot(slot, label, attachment) {
+function renderAttachmentSlot(slot, label, attachment, defaultPreviewUrl) {
+  const previewUrl = attachment?.file_url || defaultPreviewUrl || "";
+  const previewLabel = attachment?.original_filename
+    ? `${label}: ${attachment.original_filename}`
+    : `${label}: \u672a\u6dfb\u4ed8`;
+  const previewButton = previewUrl
+    ? `<button class="detail-action" type="button" data-preview-url="${escapeAttribute(previewUrl)}" data-preview-label="${escapeAttribute(previewLabel)}">\u8868\u793a</button>`
+    : "";
+
   return `
     <div class="attachment-slot">
       <div>
@@ -252,6 +278,7 @@ function renderAttachmentSlot(slot, label, attachment) {
       </div>
       <div class="attachment-actions">
         <input id="attachmentInput${slot}" type="file" accept=".pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff" />
+        ${previewButton}
         <button class="detail-action" data-upload-slot="${slot}">\u6dfb\u4ed8</button>
       </div>
     </div>
@@ -273,6 +300,20 @@ function renderPreview(fileUrl) {
     return `<iframe src="${fileUrl}" class="file-preview"></iframe>`;
   }
   return `<img src="${fileUrl}" class="image-preview" alt="preview" />`;
+}
+
+function getPreviewLabel(primaryPreviewUrl, attachments) {
+  if (!primaryPreviewUrl) {
+    return "\u8868\u793a\u4e2d\u306e\u30d5\u30a1\u30a4\u30eb\u306f\u3042\u308a\u307e\u305b\u3093\u3002";
+  }
+
+  const activeAttachment = Object.entries(attachments).find(([, attachment]) => attachment?.file_url === primaryPreviewUrl);
+  if (activeAttachment) {
+    const [slot, attachment] = activeAttachment;
+    return `\u6dfb\u4ed8${slot}: ${attachment.original_filename}`;
+  }
+
+  return "\u73fe\u5728\u306e\u30e1\u30a4\u30f3\u30d5\u30a1\u30a4\u30eb\u3092\u8868\u793a\u4e2d";
 }
 
 function escapeHtml(value) {
