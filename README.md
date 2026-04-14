@@ -1,36 +1,53 @@
 # order-automation-poc
 
-製造業向けの受注・手配ボード POC です。  
-Trello 風のカンバン UI 上でカードを管理し、カード単位でファイルを添付しながら `受注番号 / 機械番号 / 型式 / 客先名 / 希望所要日数` を扱えます。
+Manufacturing order board POC built with FastAPI, SQLite, OCR, and a Trello-like kanban UI.
 
-## Features
+## Overview
 
-- カンバン管理
-  - `受注番号未採番`
-  - `設計リスト作成中`
-  - `手配前処理`
-  - `購買手配中`
-  - `手配完了`
-- `受注番号未採番` 列でカード追加
-- カードのドラッグ＆ドロップ移動
-- カード詳細で基本情報を編集
-- カードごとの添付ファイル管理
-  - 添付ファイル1: 注文情報
-  - 添付ファイル2: 設計リスト
-  - 添付ファイル3: 添付書類
-  - 添付ファイル4: 緊急作業指示書
-  - 添付ファイル5: 図面
-  - 添付ファイル6: APからの資料
-- 注文情報ファイルの OCR と基本情報抽出
-- CSV 出力
+This project is a lightweight proof of concept for managing manufacturing order work on cards.
+
+Each card can store:
+
+- Order number
+- Machine number
+- Model
+- Customer name
+- Requested lead days
+- Multiple attachment slots
+
+The UI supports:
+
+- Kanban columns for workflow status
+- Creating cards in the backlog column
+- Drag and drop between status columns
+- Editing card details
+- Uploading files inside each card
+- OCR extraction from the order-information attachment
+
+## Status Groups
+
+- `受注番号未採番`
+- `設計リスト作成中`
+- `手配前処理`
+- `購買手配中`
+- `手配完了`
+
+## Attachment Slots
+
+- Attachment 1: 注文情報
+- Attachment 2: 設計リスト
+- Attachment 3: 添付書類
+- Attachment 4: 緊急作業指示書
+- Attachment 5: 図面
+- Attachment 6: APからの資料
 
 ## Tech Stack
 
 - Backend: FastAPI
 - Frontend: HTML / JavaScript
 - Database: SQLite
-- OCR: Tesseract + pytesseract
-- PDF: pdfplumber / PyMuPDF
+- OCR: Tesseract via `pytesseract`
+- PDF processing: `pdfplumber`, `PyMuPDF`
 
 ## Project Structure
 
@@ -54,13 +71,13 @@ order-automation-poc/
 
 ## Setup
 
-### 1. Create venv
+### 1. Create virtual environment
 
 ```powershell
 python -m venv .venv
 ```
 
-### 2. Activate venv
+### 2. Activate virtual environment
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -73,12 +90,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 pip install -r requirements.txt
 ```
 
-### 4. Install Tesseract OCR
+### 4. Install Tesseract
 
-- `tesseract` コマンドが PATH から呼べるようにしてください
-- 日本語を読む場合は `jpn` 言語データも入れてください
+Install Tesseract OCR and make sure `tesseract` is available from PATH.
 
-### 5. Start app
+If you need Japanese OCR, also install the `jpn` language data.
+
+### 5. Run the app
 
 ```powershell
 uvicorn app:app --reload
@@ -90,7 +108,7 @@ Open:
 http://127.0.0.1:8000
 ```
 
-## Main APIs
+## Main API Endpoints
 
 - `POST /cards`
 - `POST /cards/update`
@@ -103,20 +121,8 @@ http://127.0.0.1:8000
 - `GET /documents/{document_id}`
 - `GET /export-csv`
 
-## Card Data Model
-
-- `order_number`
-- `machine_number`
-- `model`
-- `customer_name`
-- `requested_lead_days`
-- `attachments_json`
-- `ocr_text`
-- `ocr_meta`
-- `status`
-
 ## Notes
 
-- 添付ファイル1に注文情報をアップロードすると、OCR と簡易パーサーで基本項目を補完します
-- `poc.db` と `uploads/` は Git 管理対象外です
-- この POC は最小構成を優先しているため、入力ルールや OCR 抽出ロジックは今後拡張前提です
+- Uploading Attachment 1 can populate card fields through OCR parsing.
+- `poc.db` and `uploads/` are excluded from Git.
+- This project is intentionally minimal and designed to be extended later.
