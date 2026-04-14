@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manufacturing Order Board</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand-mark">▣</div>
+        <div class="brand-name">Order Board</div>
+      </div>
+      <div class="topbar-center">
+        <input class="search-input" type="text" value="ステータス管理" readonly />
+      </div>
+      <div class="topbar-right">
+        <button id="refreshButton" class="ghost-button">再読込</button>
+        <a class="primary-button" href="/export-csv" target="_blank" rel="noreferrer">CSV 出力</a>
+      </div>
+    </header>
+
+    <main class="board-scene">
+      <div class="scene-overlay"></div>
+
+      <section class="board-header">
+        <div>
+          <p class="board-kicker">Manufacturing Purchase Automation</p>
+          <h1>ステータス管理</h1>
+        </div>
+      </section>
+
+      <section class="board-area">
+        <div id="kanbanBoard" class="kanban-board"></div>
+      </section>
+
+      <footer class="bottom-dock">
+        <button class="dock-item active">ボード</button>
+        <button class="dock-item">詳細</button>
+      </footer>
+    </main>
+  </div>
+
+  <aside id="detailDrawer" class="detail-drawer hidden">
+    <div class="drawer-header">
+      <h2>ドキュメント詳細</h2>
+      <button id="closeDrawerButton" class="icon-button">×</button>
+    </div>
+    <div id="detailContent" class="drawer-content"></div>
+  </aside>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
