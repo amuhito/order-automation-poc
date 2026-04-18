@@ -11,7 +11,7 @@ def extract_text_from_pdf(pdf_path: Path) -> dict:
     texts: list[str] = []
     page_stats: list[dict] = []
 
-    with pdfplumber.open(pdf_path) as pdf:
+    with pdfplumber.open(pdf_path) as pdf, fitz.open(pdf_path) as doc:
         for index, page in enumerate(pdf.pages, start=1):
             direct_text = (page.extract_text() or "").strip()
             if direct_text:
@@ -19,12 +19,11 @@ def extract_text_from_pdf(pdf_path: Path) -> dict:
                 page_stats.append({"page": index, "mode": "direct-text", "chars": len(direct_text)})
                 continue
 
-            with fitz.open(pdf_path) as doc:
-                pix = doc[index - 1].get_pixmap(matrix=fitz.Matrix(2, 2))
-                image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                ocr_text = run_tesseract(image)
-                texts.append(f"[PAGE {index}]\n{ocr_text}")
-                page_stats.append({"page": index, "mode": "ocr", "chars": len(ocr_text)})
+            pix = doc[index - 1].get_pixmap(matrix=fitz.Matrix(2, 2))
+            image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            ocr_text = run_tesseract(image)
+            texts.append(f"[PAGE {index}]\n{ocr_text}")
+            page_stats.append({"page": index, "mode": "ocr", "chars": len(ocr_text)})
 
     return {"text": "\n\n".join(texts).strip(), "meta": {"file_type": "pdf", "pages": page_stats}}
 

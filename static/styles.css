@@ -69,13 +69,13 @@ body {
   justify-content: center;
 }
 
-.search-input {
-  width: min(780px, 100%);
+.topbar-note {
+  margin: 0;
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(9, 30, 66, 0.12);
-  background: rgba(255, 255, 255, 0.92);
-  font-size: 15px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .board-scene {
@@ -97,7 +97,6 @@ body {
 
 .board-header,
 .board-area,
-.floating-panel,
 .bottom-dock {
   position: relative;
   z-index: 1;
@@ -125,18 +124,9 @@ body {
   font-size: 30px;
 }
 
-.board-header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
 .primary-button,
-.soft-button,
 .ghost-button,
 .dock-item,
-.mini-action,
 .detail-action,
 .icon-button {
   border: none;
@@ -145,9 +135,7 @@ body {
 }
 
 .primary-button,
-.soft-button,
 .ghost-button,
-.mini-action,
 .detail-action {
   padding: 10px 14px;
   border-radius: 10px;
@@ -164,13 +152,6 @@ body {
   background: var(--accent-strong);
 }
 
-.soft-button {
-  background: rgba(255, 255, 255, 0.74);
-  color: var(--ink);
-  backdrop-filter: blur(12px);
-}
-
-.soft-button:hover,
 .ghost-button:hover {
   background: rgba(255, 255, 255, 0.94);
 }
@@ -287,50 +268,6 @@ body {
   background: rgba(9, 30, 66, 0.14);
 }
 
-.floating-panel {
-  position: absolute;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
-}
-
-.panel-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.panel-title-row h2 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.mini-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(12, 102, 228, 0.12);
-  color: var(--accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.mini-pill.subtle {
-  background: rgba(23, 43, 77, 0.08);
-  color: var(--muted);
-}
-
-.stack-form {
-  display: grid;
-  gap: 10px;
-}
-
-.stack-form input[type="file"],
 .detail-drawer input[type="text"],
 .detail-drawer select {
   width: 100%;
@@ -339,16 +276,6 @@ body {
   border-radius: 10px;
   background: white;
   font-size: 14px;
-}
-
-.full-width {
-  width: 100%;
-}
-
-.panel-note {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .bottom-dock {
@@ -559,7 +486,6 @@ pre {
     flex-direction: column;
   }
 
-  .upload-panel,
   .bottom-dock {
     position: static;
     transform: none;

@@ -185,6 +185,24 @@ async function openDetail(documentId) {
     </div>
 
     <div class="detail-block">
+      <h4>\u8abf\u9054\u62bd\u51fa\u7d50\u679c</h4>
+      <div class="detail-summary">
+        <div><span>\u90e8\u54c1\u756a\u53f7</span><strong>${escapeHtml(doc.part_number || "\u672a\u62bd\u51fa")}</strong></div>
+        <div><span>\u6570\u91cf</span><strong>${escapeHtml(doc.quantity || "\u672a\u62bd\u51fa")}</strong></div>
+        <div><span>\u6750\u8cea</span><strong>${escapeHtml(doc.material || "\u672a\u62bd\u51fa")}</strong></div>
+        <div><span>\u8868\u9762\u51e6\u7406</span><strong>${escapeHtml(doc.surface || "\u672a\u62bd\u51fa")}</strong></div>
+        <div><span>\u5019\u88dc\u4f9b\u7d66\u5148</span><strong>${escapeHtml(doc.supplier_candidate || doc.supplier_name || "\u672a\u8a2d\u5b9a")}</strong></div>
+        <div><span>\u624b\u914d\u671f\u9650</span><strong>${escapeHtml(doc.order_due_date || "\u672a\u8a2d\u5b9a")}</strong></div>
+      </div>
+      <p class="inline-note">\u4fe1\u983c\u5ea6: ${escapeHtml(formatConfidence(doc.confidence))} / \u5224\u5b9a: ${escapeHtml(doc.automation_decision || "\u672a\u8a55\u4fa1")}</p>
+      <div class="inline-form top-gap">
+        <button class="detail-action" id="runOcrButton">OCR \u518d\u5b9f\u884c</button>
+        <button class="detail-action" id="runParseButton">\u8abf\u9054\u9805\u76ee\u3092\u62bd\u51fa</button>
+      </div>
+      <p id="operationStatusText" class="inline-note"></p>
+    </div>
+
+    <div class="detail-block">
       <h4>\u30d7\u30ec\u30d3\u30e5\u30fc</h4>
       <p id="previewLabel" class="inline-note">${escapeHtml(getPreviewLabel(primaryPreviewUrl, attachments))}</p>
       <div id="previewPanel">${renderPreview(primaryPreviewUrl)}</div>
@@ -203,6 +221,14 @@ async function openDetail(documentId) {
   document.getElementById("approveButton").addEventListener("click", async () => {
     await approveOrder(doc.id);
     await openDetail(doc.id);
+  });
+
+  document.getElementById("runOcrButton").addEventListener("click", async () => {
+    await runDocumentTask(doc.id, "/ocr", "OCR を実行しました。");
+  });
+
+  document.getElementById("runParseButton").addEventListener("click", async () => {
+    await runDocumentTask(doc.id, "/parse", "調達項目を抽出しました。");
   });
 
   document.getElementById("saveCardInfoButton").addEventListener("click", async () => {
@@ -292,6 +318,34 @@ async function approveOrder(documentId) {
   await refreshBoard();
 }
 
+async function runDocumentTask(documentId, endpoint, successMessage) {
+  const statusEl = document.getElementById("operationStatusText");
+  const formData = new FormData();
+  formData.append("document_id", String(documentId));
+
+  try {
+    const response = await fetch(endpoint, { method: "POST", body: formData });
+    if (!response.ok) {
+      const detail = await readErrorDetail(response);
+      throw new Error(detail);
+    }
+    statusEl.textContent = successMessage;
+    await refreshBoard();
+    await openDetail(documentId);
+  } catch (error) {
+    statusEl.textContent = `処理に失敗しました: ${error.message}`;
+  }
+}
+
+async function readErrorDetail(response) {
+  try {
+    const data = await response.json();
+    return data.detail || `${response.status} ${response.statusText}`;
+  } catch {
+    return `${response.status} ${response.statusText}`;
+  }
+}
+
 function renderPreview(fileUrl) {
   if (!fileUrl) {
     return `<div class="empty-preview">\u30d5\u30a1\u30a4\u30eb\u306f\u307e\u3060\u7d10\u3065\u3044\u3066\u3044\u307e\u305b\u3093\u3002</div>`;
@@ -314,6 +368,17 @@ function getPreviewLabel(primaryPreviewUrl, attachments) {
   }
 
   return "\u73fe\u5728\u306e\u30e1\u30a4\u30f3\u30d5\u30a1\u30a4\u30eb\u3092\u8868\u793a\u4e2d";
+}
+
+function formatConfidence(value) {
+  if (value === null || value === undefined || value === "") {
+    return "\u672a\u8a08\u7b97";
+  }
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    return "\u672a\u8a08\u7b97";
+  }
+  return num.toFixed(2);
 }
 
 function escapeHtml(value) {

@@ -1,0 +1,5 @@
+STATUS_OCR_DONE = "受注番号未採番"
+STATUS_WAITING = "設計リスト作成中"
+STATUS_CANDIDATE = "手配前処理"
+STATUS_APPROVED = "購買手配中"
+STATUS_COMPLETED = "手配完了"

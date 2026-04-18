@@ -1,9 +1,9 @@
 import csv
 import io
 import json
-import shutil
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,22 +21,22 @@ from src.db import (
     init_db,
     update_document_fields,
 )
-from src.ocr_service import extract_text_from_file
-from src.order_parser import parse_order_sheet
-from src.parser import parse_procurement_fields
+from src.job_queue import enqueue_ocr_job, is_async_ocr_enabled
+from src.ocr_jobs import mark_ocr_failed, mark_ocr_queued, run_ocr_and_parse_for_document
+from src.statuses import STATUS_APPROVED, STATUS_CANDIDATE, STATUS_COMPLETED, STATUS_OCR_DONE, STATUS_WAITING
+from src.storage import (
+    LOCAL_UPLOAD_DIR,
+    ensure_storage_ready,
+    is_local_storage,
+    resolve_file_url,
+    upload_file as store_upload_file,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = BASE_DIR / "uploads"
 STATIC_DIR = BASE_DIR / "static"
 
-STATUS_OCR_DONE = "\u53d7\u6ce8\u756a\u53f7\u672a\u63a1\u756a"
-STATUS_WAITING = "\u8a2d\u8a08\u30ea\u30b9\u30c8\u4f5c\u6210\u4e2d"
-STATUS_CANDIDATE = "\u624b\u914d\u524d\u51e6\u7406"
-STATUS_APPROVED = "\u8cfc\u8cb7\u624b\u914d\u4e2d"
-STATUS_COMPLETED = "\u624b\u914d\u5b8c\u4e86"
-
-UPLOAD_DIR.mkdir(exist_ok=True)
+ensure_storage_ready()
 init_db()
 
 app = FastAPI(title="Manufacturing Order Automation POC")
@@ -49,7 +49,8 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
+if is_local_storage():
+    app.mount("/files", StaticFiles(directory=LOCAL_UPLOAD_DIR), name="files")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -64,29 +65,23 @@ async def upload_file(
     attachment_slot: Optional[int] = Form(default=None),
 ) -> dict:
     original_name = Path(file.filename or "uploaded_file").name
-    target_name = f"{Path(original_name).stem}_{len(get_all_documents()) + 1}{Path(original_name).suffix}"
-    target_path = UPLOAD_DIR / target_name
-
-    with target_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    target_name = f"{Path(original_name).stem}_{uuid4().hex[:8]}{Path(original_name).suffix.lower()}"
+    stored = store_upload_file(file, target_name)
+    target_path = stored["file_path"]
+    file_url = stored["file_url"]
 
     if document_id is not None:
         document = get_document_by_id(document_id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        attachments = {}
-        if document.get("attachments_json"):
-            try:
-                attachments = json.loads(document["attachments_json"])
-            except json.JSONDecodeError:
-                attachments = {}
+        attachments = parse_json_text(document.get("attachments_json"))
 
         attachment_payload = {
             "filename": target_name,
             "original_filename": original_name,
-            "file_path": str(target_path),
-            "file_url": f"/files/{target_name}",
+            "file_path": target_path,
+            "file_url": file_url,
         }
 
         if attachment_slot is not None:
@@ -103,54 +98,56 @@ async def upload_file(
             updates["file_path"] = str(target_path)
 
         if attachment_slot == 1:
-            extracted = extract_text_from_file(str(target_path))
-            parsed_order = parse_order_sheet(extracted["text"])
-            updates["ocr_text"] = extracted["text"]
-            updates["ocr_meta"] = json.dumps(extracted["meta"], ensure_ascii=False)
-            updates["order_number"] = parsed_order.get("order_number") or document.get("order_number")
-            updates["machine_number"] = parsed_order.get("machine_number") or document.get("machine_number")
-            updates["model"] = parsed_order.get("model") or document.get("model")
-            updates["customer_name"] = parsed_order.get("customer_name") or document.get("customer_name")
-            updates["requested_lead_days"] = parsed_order.get("requested_lead_days") or document.get("requested_lead_days")
-            if updates.get("order_number"):
-                updates["original_filename"] = updates["order_number"]
+            updates["ocr_status"] = "queued"
+            updates["ocr_error"] = None
 
         update_document_fields(
             document_id,
             **updates,
         )
 
+        if attachment_slot == 1:
+            if is_async_ocr_enabled():
+                job_id = enqueue_ocr_job(document_id, run_parse=True, source="upload_attachment_1")
+                mark_ocr_queued(document_id, job_id=job_id, status="queued")
+            else:
+                try:
+                    run_ocr_and_parse_for_document(document_id, run_parse=True)
+                except Exception as exc:
+                    mark_ocr_failed(document_id, str(exc))
+
         return {
             "message": "File uploaded successfully",
             "document_id": document_id,
             "filename": target_name,
-            "file_url": f"/files/{target_name}",
+            "file_url": file_url,
             "attachment_slot": attachment_slot,
         }
 
     created_id = create_document(
         filename=target_name,
         original_filename=original_name,
-        file_path=str(target_path),
+        file_path=target_path,
         attachments_json=json.dumps(
             {
                 "1": {
                     "filename": target_name,
                     "original_filename": original_name,
-                    "file_path": str(target_path),
-                    "file_url": f"/files/{target_name}",
+                    "file_path": target_path,
+                    "file_url": file_url,
                 }
             },
             ensure_ascii=False,
         ),
         status=STATUS_WAITING,
+        ocr_status="idle",
     )
 
     return {
         "message": "File uploaded successfully",
         "document_id": created_id,
         "filename": target_name,
-        "file_url": f"/files/{target_name}",
+        "file_url": file_url,
     }
 
 
@@ -166,6 +163,7 @@ async def create_card(title: str = Form(...)) -> dict:
         file_path="",
         order_number=card_title,
         status=STATUS_OCR_DONE,
+        ocr_status="idle",
     )
 
     add_automation_log(document_id, "card_created", "Card created manually in backlog")
@@ -183,21 +181,28 @@ async def run_ocr(
     filename: Optional[str] = Form(default=None),
 ) -> dict:
     document = resolve_document(document_id, filename)
-    extracted = extract_text_from_file(document["file_path"])
+    if is_async_ocr_enabled():
+        job_id = enqueue_ocr_job(document["id"], run_parse=False, source="manual_ocr")
+        mark_ocr_queued(document["id"], job_id=job_id, status="queued")
+        return {
+            "document_id": document["id"],
+            "filename": document["filename"],
+            "queued": True,
+            "job_id": job_id,
+            "status": "queued",
+        }
 
-    update_document_fields(
-        document["id"],
-        ocr_text=extracted["text"],
-        ocr_meta=json.dumps(extracted["meta"], ensure_ascii=False),
-        status=STATUS_OCR_DONE,
-    )
-
-    return {
-        "document_id": document["id"],
-        "filename": document["filename"],
-        "text": extracted["text"],
-        "meta": extracted["meta"],
-    }
+    try:
+        updates = run_ocr_and_parse_for_document(document["id"], run_parse=False)
+        return {
+            "document_id": document["id"],
+            "filename": document["filename"],
+            "queued": False,
+            "status": updates.get("ocr_status"),
+        }
+    except Exception as exc:
+        mark_ocr_failed(document["id"], str(exc))
+        raise HTTPException(status_code=500, detail="OCR processing failed") from exc
 
 
 @app.post("/parse")
@@ -206,56 +211,42 @@ async def parse_document(
     filename: Optional[str] = Form(default=None),
 ) -> dict:
     document = resolve_document(document_id, filename)
-    text = document.get("ocr_text") or ""
+    if is_async_ocr_enabled():
+        job_id = enqueue_ocr_job(document["id"], run_parse=True, source="manual_parse")
+        mark_ocr_queued(document["id"], job_id=job_id, status="queued")
+        return {
+            "document_id": document["id"],
+            "filename": document["filename"],
+            "queued": True,
+            "job_id": job_id,
+            "status": "queued",
+        }
 
-    if not text.strip():
-        extracted = extract_text_from_file(document["file_path"])
-        text = extracted["text"]
-        update_document_fields(
-            document["id"],
-            ocr_text=text,
-            ocr_meta=json.dumps(extracted["meta"], ensure_ascii=False),
-            status=STATUS_OCR_DONE,
-        )
+    try:
+        run_ocr_and_parse_for_document(document["id"], run_parse=True)
+    except Exception as exc:
+        mark_ocr_failed(document["id"], str(exc))
+        raise HTTPException(status_code=500, detail="Parse processing failed") from exc
 
-    parsed = parse_procurement_fields(text, history_records=get_history_records())
-    history_records = get_history_records()
-    automation = evaluate_order_candidate({**document, **parsed, "ocr_text": text}, history_records)
-    next_status = STATUS_WAITING
-
-    update_document_fields(
-        document["id"],
-        parsed_json=json.dumps(parsed, ensure_ascii=False),
-        part_number=parsed.get("part_number"),
-        quantity=parsed.get("quantity"),
-        material=parsed.get("material"),
-        surface=parsed.get("surface"),
-        confidence=parsed.get("confidence"),
-        supplier_candidate=automation.get("supplier_name") or parsed.get("supplier_candidate"),
-        order_due_date=automation.get("order_due_date"),
-        automation_decision=automation.get("review_priority"),
-        status=next_status,
-    )
-
+    refreshed = get_document_by_id(document["id"]) or document
+    parsed = parse_json_text(refreshed.get("parsed_json"))
     return {
-        "document_id": document["id"],
-        "filename": document["filename"],
-        "order_number": document.get("order_number"),
-        "machine_number": document.get("machine_number"),
-        "model": document.get("model"),
-        "customer_name": document.get("customer_name"),
-        "requested_lead_days": document.get("requested_lead_days"),
-        "part_number": parsed.get("part_number"),
-        "quantity": parsed.get("quantity"),
-        "material": parsed.get("material"),
-        "surface": parsed.get("surface"),
-        "confidence": parsed.get("confidence"),
-        "supplier_candidate": automation.get("supplier_name") or parsed.get("supplier_candidate"),
-        "matched_history_count": automation.get("history_count"),
-        "order_due_date": automation.get("order_due_date"),
-        "is_order_candidate": automation.get("is_order_candidate"),
-        "review_priority": automation.get("review_priority"),
-        "status": next_status,
+        "document_id": refreshed["id"],
+        "filename": refreshed.get("filename"),
+        "order_number": refreshed.get("order_number"),
+        "machine_number": refreshed.get("machine_number"),
+        "model": refreshed.get("model"),
+        "customer_name": refreshed.get("customer_name"),
+        "requested_lead_days": refreshed.get("requested_lead_days"),
+        "part_number": refreshed.get("part_number"),
+        "quantity": refreshed.get("quantity"),
+        "material": refreshed.get("material"),
+        "surface": refreshed.get("surface"),
+        "confidence": refreshed.get("confidence"),
+        "supplier_candidate": refreshed.get("supplier_candidate"),
+        "order_due_date": refreshed.get("order_due_date"),
+        "review_priority": refreshed.get("automation_decision"),
+        "status": refreshed.get("status"),
         "parsed": parsed,
     }
 
@@ -449,26 +440,17 @@ def get_document(document_id: int) -> dict:
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    parsed_json = {}
-    if document.get("parsed_json"):
-        try:
-            parsed_json = json.loads(document["parsed_json"])
-        except json.JSONDecodeError:
-            parsed_json = {}
-
-    ocr_meta = {}
-    if document.get("ocr_meta"):
-        try:
-            ocr_meta = json.loads(document["ocr_meta"])
-        except json.JSONDecodeError:
-            ocr_meta = {}
+    parsed_json = parse_json_text(document.get("parsed_json"))
+    ocr_meta = parse_json_text(document.get("ocr_meta"))
+    attachments = hydrate_attachment_urls(parse_json_text(document.get("attachments_json")))
+    file_url = resolve_file_url(document.get("file_path") or "", document.get("filename"))
 
     return {
         **document,
         "parsed": parsed_json,
         "ocr_meta": ocr_meta,
-        "attachments": json.loads(document["attachments_json"]) if document.get("attachments_json") else {},
-        "file_url": f"/files/{document['filename']}" if document.get("filename") else None,
+        "attachments": attachments,
+        "file_url": file_url,
     }
 
 
@@ -482,3 +464,29 @@ def resolve_document(document_id: Optional[int], filename: Optional[str]) -> dic
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
+
+
+def parse_json_text(value: Optional[str]) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def hydrate_attachment_urls(attachments: dict) -> dict:
+    hydrated = {}
+    for slot, payload in attachments.items():
+        if not isinstance(payload, dict):
+            hydrated[slot] = payload
+            continue
+
+        item = dict(payload)
+        file_path = item.get("file_path")
+        filename = item.get("filename")
+        if file_path:
+            item["file_url"] = resolve_file_url(file_path, filename)
+        hydrated[slot] = item
+    return hydrated

@@ -1,0 +1,23 @@
+aws_region          = "ap-northeast-1"
+project_name        = "order-automation-poc"
+environment         = "dev"
+
+vpc_id              = "vpc-xxxxxxxx"
+public_subnet_ids   = ["subnet-public-a", "subnet-public-c"]
+private_subnet_ids  = ["subnet-private-a", "subnet-private-c"]
+db_subnet_ids       = ["subnet-private-a", "subnet-private-c"]
+
+allowed_ingress_cidr = "0.0.0.0/0"
+
+desired_count       = 0
+worker_desired_count = 0
+container_cpu       = 1024
+container_memory    = 2048
+worker_cpu          = 1024
+worker_memory       = 2048
+
+db_instance_class   = "db.t4g.micro"
+db_allocated_storage = 20
+
+# Optional: use a pre-pushed image instead of ECR repo output
+# container_image_override = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/order-automation-poc-dev:latest"
